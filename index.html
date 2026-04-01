@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Advanced Quiz Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  
+  <style>
+    /* CSS Styling (Pehle wali hi hai, bas dropdowns add kiye hain) */
+    :root { --primary-color: #5c67f2; --accent-color: #ff6b6b; --bg-color: #f0f2f5; --white: #ffffff; }
+    body { font-family: 'Poppins', sans-serif; background: var(--bg-color); margin: 0; display: flex; flex-direction: column; align-items: center; }
+    .container { width: 100%; max-width: 1000px; background: var(--white); min-height: 100vh; padding: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
+    #nameInput { text-align: center; padding-top: 50px; }
+    h2 { color: var(--primary-color); margin-bottom: 25px; }
+    .input-group { margin-bottom: 15px; }
+    input, select { width: 90%; max-width: 400px; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 16px; outline: none; text-align: center; }
+    .start-btn { width: 90%; max-width: 400px; padding: 16px; background: var(--primary-color); color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+    #testContainer { display: none; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px 5px; }
+    #timer { font-size: 15px; font-weight: 600; color: var(--accent-color); background: #fff5f5; padding: 5px 12px; border-radius: 50px; }
+    #progressBar { width: 100%; background: #f1f3f5; height: 6px; border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+    #progressBar div { height: 100%; background: var(--primary-color); width: 0%; transition: 0.4s; }
+    .question { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #2d3436; }
+    .option-label { display: flex; align-items: center; padding: 14px; border: 2px solid #f1f3f5; border-radius: 12px; cursor: pointer; margin-bottom: 10px; }
+    .option-label.selected { border-color: var(--primary-color); background: #f0f3ff; }
+    .buttons { display: flex; justify-content: space-between; gap: 10px; margin-top: 30px; }
+    .nav-btn { flex: 1; padding: 15px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; font-size: 14px; }
+    .prev { background: #f1f3f5; }
+    .submit-mid { background: var(--accent-color); color: white; }
+    .next { background: var(--primary-color); color: white; }
+    @media (max-width: 767px) { .buttons { position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 15px; box-shadow: 0 -5px 15px rgba(0,0,0,0.05); } .container { padding-bottom: 100px; } }
+    .summary-box { max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 10px; text-align: left; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div id="nameInput">
+      <h2>Dream Success Classes</h2>
+      <div class="input-group">
+        <input type="text" id="studentName" placeholder="Enter Your Name" autocomplete="off">
+      </div>
+      <div class="input-group">
+        <select id="subjectSelect" onchange="updateChapters()">
+          <option value="">-- Select Subject --</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <select id="chapterSelect">
+          <option value="">-- Select Chapter --</option>
+        </select>
+      </div>
+      <button class="start-btn" onclick="startTest()">Start Online Test</button>
+    </div>
+
+    <div id="testContainer">
+      <div class="top-bar">
+        <span id="testTitle">Candidate</span>
+        <div id="timer">🕒 10:00</div>
+      </div>
+      <div id="progressBar"><div></div></div>
+      <div id="quiz"></div>
+      <div class="buttons">
+        <button id="prevBtn" class="nav-btn prev" onclick="previousQuestion()">Previous</button>
+        <button id="midSubmit" class="nav-btn submit-mid" onclick="triggerManualSubmit()">Submit</button>
+        <button id="nextBtn" class="nav-btn next" onclick="handleNext()">Next</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // 1. Backend Mapping (GitHub Links)
+  // YAHA APNE GITHUB LINKS DAALEIN
+  const chapterLinks = {
+    "Science": {
+      "Physics: Light": "https://raw.githubusercontent.com/username/repo/main/physics_light.json",
+      "Biology: Cells": "https://raw.githubusercontent.com/username/repo/main/bio_cells.json",
+      "Chemistry: Atoms": "https://raw.githubusercontent.com/username/repo/main/chemistry.json"
+    },
+    "History": {
+      "Ancient India": "https://raw.githubusercontent.com/username/repo/main/history_ancient.json",
+      "Mughal Empire": "https://raw.githubusercontent.com/username/repo/main/mughal.json"
+    }
+  };
+
+  let activeQuestions = [];
+  let currentIdx = 0;
+  let userAns = [];
+  let timeLeft = 600;
+  let timerId = null;
+  let sName = "";
+
+  // Dropdown initialization
+  function init() {
+    const subSelect = document.getElementById('subjectSelect');
+    Object.keys(chapterLinks).forEach(sub => {
+      let opt = document.createElement('option');
+      opt.value = sub;
+      opt.innerText = sub;
+      subSelect.appendChild(opt);
+    });
+  }
+
+  function updateChapters() {
+    const sub = document.getElementById('subjectSelect').value;
+    const chapSelect = document.getElementById('chapterSelect');
+    chapSelect.innerHTML = '<option value="">-- Select Chapter --</option>';
+    if(sub && chapterLinks[sub]) {
+      Object.keys(chapterLinks[sub]).forEach(chap => {
+        let opt = document.createElement('option');
+        opt.value = chap;
+        opt.innerText = chap;
+        chapSelect.appendChild(opt);
+      });
+    }
+  }
+
+  // Shuffle logic
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  // Fetch and Start
+  async function startTest() {
+    sName = document.getElementById('studentName').value.trim();
+    const sub = document.getElementById('subjectSelect').value;
+    const chap = document.getElementById('chapterSelect').value;
+
+    if(!sName || !sub || !chap) return Swal.fire('Error', 'Please fill all details!', 'warning');
+
+    Swal.fire({ title: 'Downloading Questions...', didOpen: () => { Swal.showLoading(); }});
+
+    try {
+      const response = await fetch(chapterLinks[sub][chap]);
+      activeQuestions = await response.json();
+      Swal.close();
+
+      shuffle(activeQuestions);
+      userAns = new Array(activeQuestions.length).fill(null);
+      currentIdx = 0;
+      document.getElementById('nameInput').style.display = 'none';
+      document.getElementById('testContainer').style.display = 'block';
+      loadQuestion();
+      startTimer();
+    } catch (e) {
+      Swal.fire('Error', 'Could not load questions. Check GitHub Link!', 'error');
+    }
+  }
+
+  function loadQuestion() {
+    const q = activeQuestions[currentIdx];
+    document.getElementById('testTitle').innerText = sName;
+    document.getElementById('quiz').innerHTML = `
+      <div class="question">${currentIdx+1}. ${q.question}</div>
+      <div class="options">
+        ${q.options.map(o => `
+          <label class="option-label ${userAns[currentIdx] === o ? 'selected' : ''}" onclick="saveAns('${o}', this)">
+            <span>${o}</span>
+          </label>
+        `).join('')}
+      </div>
+    `;
+    document.getElementById('prevBtn').disabled = currentIdx === 0;
+    document.getElementById('nextBtn').innerText = currentIdx === activeQuestions.length - 1 ? 'Finish' : 'Next';
+    document.getElementById('progressBar').firstElementChild.style.width = `${((currentIdx+1)/activeQuestions.length)*100}%`;
+  }
+
+  window.saveAns = (val, el) => {
+    userAns[currentIdx] = val;
+    document.querySelectorAll('.option-label').forEach(l => l.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+
+  function previousQuestion() { if(currentIdx > 0) { currentIdx--; loadQuestion(); } }
+  function handleNext() { if(currentIdx < activeQuestions.length - 1) { currentIdx++; loadQuestion(); } else { triggerManualSubmit(); } }
+  
+  function triggerManualSubmit() {
+    Swal.fire({
+      title: 'Submit Test?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Submit'
+    }).then((r) => { if(r.isConfirmed) submitQuiz(); });
+  }
+
+  function startTimer() {
+    timerId = setInterval(() => {
+      timeLeft--;
+      let m = Math.floor(timeLeft/60), s = timeLeft%60;
+      document.getElementById('timer').innerText = `🕒 ${m}:${s<10?'0':''}${s}`;
+      if(timeLeft <= 0) submitQuiz();
+    }, 1000);
+  }
+
+  function submitQuiz() {
+    clearInterval(timerId);
+    let score = 0, summary = "";
+    activeQuestions.forEach((q, i) => {
+      let isCorrect = userAns[i] === q.answer;
+      if(isCorrect) score++;
+      summary += `<div style="padding:10px; border-bottom:1px solid #eee;">
+        <b>Q${i+1}: ${q.question}</b><br>
+        <span style="color:${isCorrect?'green':'red'}">Ans: ${userAns[i] || 'Not Answered'}</span><br>
+        ${!isCorrect ? `<span style="color:green">Correct: ${q.answer}</span>` : ''}
+      </div>`;
+    });
+
+    Swal.fire({
+      title: 'Result',
+      html: `<h3>Score: ${score}/${activeQuestions.length}</h3><div class="summary-box">${summary}</div>`,
+      confirmButtonText: 'Close'
+    }).then(() => location.reload());
+  }
+
+  window.onload = init;
+</script>
+</body>
+</html>
